@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"orderAssembly/models"
+	"strconv"
 	"strings"
 )
 
@@ -76,7 +77,7 @@ func (db *Database) PrintAssemblyPage(orderNumbers []int) error {
 	for i := range orderNumbers {
 		questionMarks[i] = "?"
 	}
-	query := "SELECT orders_products.product_name, orders_products.product_id, orders_products.product_quantity, orders.number as order_number, orders.order_id, racks.name as rack_name, racks_products.main_rack, racks.rack_id FROM orders INNER JOIN orders_products ON orders.order_id = orders_products.order_id INNER JOIN racks_products ON orders_products.product_id = racks_products.product_id INNER JOIN racks ON racks_products.rack_id = racks.rack_id WHERE orders.number IN (" +
+	query := "SELECT order_id, number FROM orders WHERE number IN (" +
 		strings.Join(questionMarks, ",") +
 		");"
 
@@ -89,55 +90,102 @@ func (db *Database) PrintAssemblyPage(orderNumbers []int) error {
 	if err != nil {
 		return err
 	}
-	printRows(rows, orderNumbers)
-	return nil
-}
 
-func printRows(rows *sql.Rows, orderNumbers []int) {
 	var productName, rackName string
 	var productID, productQuantity, orderNumber, orderID, mainRack, rackID int
 	racks := map[int]*models.Rack{}
 	products := map[int]*models.Product{}
 	orders := map[int]*models.Order{}
+	argsIDsCheck := map[int]bool{}
+	var argsIDs []string
 
 	for rows.Next() {
-		rows.Scan(&productName, &productID, &productQuantity, &orderNumber, &orderID, &rackName, &mainRack, &rackID)
+		rows.Scan(&orderID, &orderNumber)
+		ord := &models.Order{ID: orderID, Number: orderNumber, ProdQauntyty: map[int]int{}}
+		orders[orderID] = ord
+		argsIDs = append(argsIDs, strconv.Itoa(orderID))
+	}
+
+	query = "SELECT product_name, product_id, product_quantity, order_id FROM orders_products WHERE order_id IN (" +
+		strings.Join(argsIDs, ",") +
+		");"
+	rows, err = db.dbSql.Query(query)
+	if err != nil {
+		return err
+	}
+
+	argsIDs = []string{}
+	for rows.Next() {
+		rows.Scan(&productName, &productID, &productQuantity, &orderID)
+
+		_, ok := products[productID]
+		if ok {
+			products[productID].Orders[orderID] = true
+		} else {
+			prod := &models.Product{ID: productID, Name: productName, Orders: map[int]bool{orderID: true}, AdditionalRacks: map[int]bool{}}
+			products[productID] = prod
+		}
+
+		orders[orderID].ProdQauntyty[productID] = productQuantity
+
+		_, ok = argsIDsCheck[productID]
+		if !ok {
+			argsIDs = append(argsIDs, strconv.Itoa(productID))
+			argsIDsCheck[productID] = true
+		}
+	}
+
+	query = "SELECT rack_id, main_rack, product_id FROM racks_products WHERE product_id IN (" +
+		strings.Join(argsIDs, ",") +
+		");"
+	rows, err = db.dbSql.Query(query)
+	if err != nil {
+		return err
+	}
+
+	argsIDs = []string{}
+	argsIDsCheck = map[int]bool{}
+	for rows.Next() {
+		rows.Scan(&rackID, &mainRack, &productID)
 		_, ok := racks[rackID]
 		if ok {
 			racks[rackID].Products[productID] = true
 		} else {
-			rack := &models.Rack{rackID, rackName, map[int]bool{productID: true}}
+			rack := &models.Rack{ID: rackID, Name: rackName, Products: map[int]bool{productID: true}}
 			racks[rackID] = rack
 		}
 
-		_, ok = products[productID]
-		if ok {
-			if mainRack == 1 {
-				products[productID].MainRack = rackID
-
-			} else {
-				products[productID].AdditionalRacks[rackID] = true
-			}
-			products[productID].Orders[orderID] = true
+		if mainRack == 1 {
+			products[productID].MainRack = rackID
 		} else {
-			prod := &models.Product{ID: productID, Name: productName, Orders: map[int]bool{orderID: true}, AdditionalRacks: map[int]bool{}}
-			if mainRack == 1 {
-				prod.MainRack = rackID
-			} else {
-				prod.AdditionalRacks[rackID] = true
-			}
-			products[productID] = prod
+			products[productID].AdditionalRacks[rackID] = true
 		}
 
-		_, ok = orders[orderID]
-		if ok {
-			orders[orderID].ProdQauntyty[productID] = productQuantity
-		} else {
-			ord := &models.Order{orderID, orderNumber, map[int]int{productID: productQuantity}}
-			orders[orderID] = ord
+		_, ok = argsIDsCheck[rackID]
+		if !ok {
+			argsIDs = append(argsIDs, strconv.Itoa(rackID))
+			argsIDsCheck[rackID] = true
 		}
 	}
 
+	query = "SELECT name, rack_id FROM racks WHERE rack_id IN (" +
+		strings.Join(argsIDs, ",") +
+		");"
+
+	rows, err = db.dbSql.Query(query)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		rows.Scan(&rackName, &rackID)
+		racks[rackID].Name = rackName
+	}
+
+	printRows(racks, products, orders, orderNumbers)
+	return nil
+}
+
+func printRows(racks map[int]*models.Rack, products map[int]*models.Product, orders map[int]*models.Order, orderNumbers []int) {
 	fmt.Print("=+=+=+=\nСтраница сборки заказов ")
 	for i := 0; i < len(orderNumbers); i++ {
 		fmt.Print(orderNumbers[i])
