@@ -100,7 +100,10 @@ func (db *Database) PrintAssemblyPage(orderNumbers []int) error {
 	var argsIDs []string
 
 	for rows.Next() {
-		rows.Scan(&orderID, &orderNumber)
+		err = rows.Scan(&orderID, &orderNumber)
+		if err != nil {
+			return err
+		}
 		ord := &models.Order{ID: orderID, Number: orderNumber, ProdQauntyty: map[int]int{}}
 		orders[orderID] = ord
 		argsIDs = append(argsIDs, strconv.Itoa(orderID))
@@ -116,8 +119,10 @@ func (db *Database) PrintAssemblyPage(orderNumbers []int) error {
 
 	argsIDs = []string{}
 	for rows.Next() {
-		rows.Scan(&productName, &productID, &productQuantity, &orderID)
-
+		err = rows.Scan(&productName, &productID, &productQuantity, &orderID)
+		if err != nil {
+			return err
+		}
 		_, ok := products[productID]
 		if ok {
 			products[productID].Orders[orderID] = true
@@ -146,7 +151,10 @@ func (db *Database) PrintAssemblyPage(orderNumbers []int) error {
 	argsIDs = []string{}
 	argsIDsCheck = map[int]bool{}
 	for rows.Next() {
-		rows.Scan(&rackID, &mainRack, &productID)
+		err = rows.Scan(&rackID, &mainRack, &productID)
+		if err != nil {
+			return err
+		}
 		_, ok := racks[rackID]
 		if ok {
 			racks[rackID].Products[productID] = true
@@ -177,7 +185,10 @@ func (db *Database) PrintAssemblyPage(orderNumbers []int) error {
 		return err
 	}
 	for rows.Next() {
-		rows.Scan(&rackName, &rackID)
+		err = rows.Scan(&rackName, &rackID)
+		if err != nil {
+			return err
+		}
 		racks[rackID].Name = rackName
 	}
 

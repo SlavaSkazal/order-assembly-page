@@ -13,11 +13,14 @@ import (
 func main() {
 	if len(os.Args) < 2 {
 		fmt.Println(makeErr("order numbers not sent"))
+
 		return
 	}
 
 	var orderNumbers []int
+
 	ordersStr := strings.Split(os.Args[1], ",")
+
 	for _, v := range ordersStr {
 		num, err := strconv.Atoi(v)
 		if err != nil {
